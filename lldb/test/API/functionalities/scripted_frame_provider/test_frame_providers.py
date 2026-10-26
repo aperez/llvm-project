@@ -611,3 +611,88 @@ class ValueProvidingFrameProvider(ScriptedFrameProvider):
             # Pass through input frames (shifted by 1)
             return index - 1
         return None
+
+
+class FrameStepPlan:
+    """Scripted plan that reports the step type a frame provided it for."""
+
+    def __init__(self, thread_plan, args):
+        self.thread_plan = thread_plan
+        self.step_type = args.GetValueForKey("step_type").GetUnsignedIntegerValue(0)
+        error = lldb.SBError()
+        self.child_plan = thread_plan.QueueThreadPlanForStepSingleInstruction(
+            False, error
+        )
+        if error.Fail():
+            raise RuntimeError(error.GetCString())
+
+    def explains_stop(self, event):
+        return False
+
+    def should_stop(self, event):
+        if not self.child_plan.IsPlanComplete():
+            return False
+        self.thread_plan.SetPlanComplete(True)
+        return True
+
+    def should_step(self):
+        return False
+
+    def is_stale(self):
+        return False
+
+    def stop_description(self, stream):
+        stream.Print(f"frame step type {self.step_type} complete")
+
+
+class StepPlanFrame(CustomScriptedFrame):
+    """Synthetic frame that implements every step with FrameStepPlan."""
+
+    def __init__(self, thread, idx, pc):
+        super().__init__(thread, idx, pc, "scripted_step_frame")
+
+    def get_plan_spec_for_step_type(self, step_type):
+        return {
+            "class_name": "test_frame_providers.FrameStepPlan",
+            "extra_args": {"step_type": step_type},
+        }
+
+
+class SelectedStepPlanFrameProvider(ScriptedFrameProvider):
+    """Puts a frame that implements stepping below two frames that do not."""
+
+    def __init__(self, input_frames, args):
+        super().__init__(input_frames, args)
+
+    @staticmethod
+    def get_description():
+        return "Put a frame that implements stepping below two frames"
+
+    def get_frame_at_index(self, index):
+        if index == 0:
+            return {"pc": 0x9000}
+        if index == 1:
+            return {"pc": 0xA000}
+        if index == 2:
+            return StepPlanFrame(self.thread, index, 0x5000)
+        if index - 3 < len(self.input_frames):
+            return index - 3
+        return None
+
+
+class FrameZeroStepPlanFrameProvider(ScriptedFrameProvider):
+    """Puts a frame that implements stepping at frame zero."""
+
+    def __init__(self, input_frames, args):
+        super().__init__(input_frames, args)
+
+    @staticmethod
+    def get_description():
+        return "Put a frame that implements stepping at frame zero"
+
+    def get_frame_at_index(self, index):
+        if index == 0:
+            return StepPlanFrame(self.thread, index, 0x5000)
+        if index - 1 < len(self.input_frames):
+            return index - 1
+        return None

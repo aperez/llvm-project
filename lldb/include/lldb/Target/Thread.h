@@ -1014,6 +1014,12 @@ public:
                                  const ScriptedMetadata &scripted_metadata,
                                  bool stop_other_threads, Status &status);
 
+  /// Ask the selected frame for the plan that implements a user-facing step.
+  ///
+  /// An empty plan means the caller should queue its native plan.
+  llvm::Expected<lldb::ThreadPlanSP>
+  GetSelectedFrameStepPlan(lldb::StepType step_type);
+
   // Thread Plan accessors:
 
   /// Format the thread plan information for auto completion.

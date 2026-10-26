@@ -1335,3 +1335,94 @@ class ScriptedFrameProviderTestCase(TestBase):
 
         self.assertEqual(frame0.GetFunctionName(), "compute_fibonacci")
         self.assertEqual(frame1.GetFunctionName(), "process_data")
+
+    def test_frame_step_plan_from_selected_frame(self):
+        """Test that stepping asks the selected frame, not frame zero, for its
+        step plan."""
+        self.build()
+        target, process, thread, bkpt = lldbutil.run_to_source_breakpoint(
+            self, "Break in foo", lldb.SBFileSpec(self.source)
+        )
+        script_path = os.path.join(self.getSourceDir(), "test_frame_providers.py")
+        self.runCmd("command script import " + script_path)
+        error = lldb.SBError()
+        target.RegisterScriptedFrameProvider(
+            "test_frame_providers.SelectedStepPlanFrameProvider",
+            lldb.SBStructuredData(),
+            error,
+        )
+        self.assertSuccess(error)
+        self.assertEqual(
+            thread.GetFrameAtIndex(2).GetFunctionName(), "scripted_step_frame"
+        )
+
+        for step_type in (lldb.eStepTypeOver, lldb.eStepTypeInto, lldb.eStepTypeOut):
+            self.assertTrue(thread.SetSelectedFrame(2).IsValid())
+            error = lldb.SBError()
+            if step_type == lldb.eStepTypeOver:
+                thread.StepOver(lldb.eOnlyDuringStepping, error)
+            elif step_type == lldb.eStepTypeInto:
+                thread.StepInto(
+                    "", lldb.LLDB_INVALID_LINE_NUMBER, error, lldb.eOnlyDuringStepping
+                )
+            else:
+                thread.StepOut(error)
+            self.assertSuccess(error)
+            self.assertEqual(process.GetState(), lldb.eStateStopped)
+            self.assertIn(
+                f"frame step type {step_type} complete",
+                thread.GetStopDescription(1024),
+            )
+
+        for step_over, step_type in (
+            (False, lldb.eStepTypeTrace),
+            (True, lldb.eStepTypeTraceOver),
+        ):
+            self.assertTrue(thread.SetSelectedFrame(2).IsValid())
+            error = lldb.SBError()
+            thread.StepInstruction(step_over, error)
+            self.assertSuccess(error)
+            self.assertEqual(process.GetState(), lldb.eStateStopped)
+            self.assertIn(
+                f"frame step type {step_type} complete",
+                thread.GetStopDescription(1024),
+            )
+
+        self.assertTrue(thread.SetSelectedFrame(2).IsValid())
+        self.runCmd("thread step-over")
+        self.assertIn(
+            f"frame step type {lldb.eStepTypeOver} complete",
+            thread.GetStopDescription(1024),
+        )
+
+    def test_step_instruction_queues_frame_step_plan(self):
+        """Test that StepInstruction runs the step plan frame zero provides."""
+        self.build()
+        target, process, thread, bkpt = lldbutil.run_to_source_breakpoint(
+            self, "Break in foo", lldb.SBFileSpec(self.source)
+        )
+        script_path = os.path.join(self.getSourceDir(), "test_frame_providers.py")
+        self.runCmd("command script import " + script_path)
+        error = lldb.SBError()
+        target.RegisterScriptedFrameProvider(
+            "test_frame_providers.FrameZeroStepPlanFrameProvider",
+            lldb.SBStructuredData(),
+            error,
+        )
+        self.assertSuccess(error)
+        self.assertEqual(
+            thread.GetFrameAtIndex(0).GetFunctionName(), "scripted_step_frame"
+        )
+
+        for step_over, step_type in (
+            (False, lldb.eStepTypeTrace),
+            (True, lldb.eStepTypeTraceOver),
+        ):
+            error = lldb.SBError()
+            thread.StepInstruction(step_over, error)
+            self.assertSuccess(error)
+            self.assertEqual(process.GetState(), lldb.eStateStopped)
+            self.assertIn(
+                f"frame step type {step_type} complete",
+                thread.GetStopDescription(1024),
+            )

@@ -669,7 +669,7 @@ protected:
     // First see if the frame has a custom step plan for us:
     if (frame) {
       llvm::Expected<lldb::ThreadPlanSP> frame_plan_result =
-          frame->GetThreadPlanForStepType(m_step_type);
+          thread->GetSelectedFrameStepPlan(m_step_type);
       if (auto llvm_err = frame_plan_result.takeError()) {
         result.AppendErrorWithFormat(
             "scripted frame provider got an error "

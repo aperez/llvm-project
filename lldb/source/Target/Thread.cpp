@@ -1447,6 +1447,14 @@ lldb::ThreadPlanSP Thread::QueueThreadPlanForStepScripted(
   return thread_plan_sp;
 }
 
+llvm::Expected<ThreadPlanSP>
+Thread::GetSelectedFrameStepPlan(StepType step_type) {
+  StackFrameSP frame_sp = GetSelectedFrame(DoNoSelectMostRelevantFrame);
+  if (!frame_sp)
+    return ThreadPlanSP();
+  return frame_sp->GetThreadPlanForStepType(step_type);
+}
+
 uint32_t Thread::GetIndexID() const { return m_index_id; }
 
 TargetSP Thread::CalculateTarget() {

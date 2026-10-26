@@ -508,7 +508,7 @@ void SBThread::StepOver(lldb::RunMode stop_other_threads, SBError &error) {
           : eStepTypeTraceOver;
 
   llvm::Expected<lldb::ThreadPlanSP> frame_plan_result =
-      frame_sp->GetThreadPlanForStepType(step_type);
+      thread->GetSelectedFrameStepPlan(eStepTypeOver);
   if (auto llvm_err = frame_plan_result.takeError()) {
     error.SetErrorStringWithFormat("scripted frame provider got an error "
                                    "while constructing step plan: \"%s\"",
@@ -581,7 +581,7 @@ void SBThread::StepInto(const char *target_name, uint32_t end_line,
   // First see if the Frame has some special way to do this step:
   if (frame_sp) {
     llvm::Expected<lldb::ThreadPlanSP> frame_plan_result =
-        frame_sp->GetThreadPlanForStepType(step_type);
+        thread->GetSelectedFrameStepPlan(eStepTypeInto);
     if (auto llvm_err = frame_plan_result.takeError()) {
       error.SetErrorStringWithFormat(
           "scripted frame provider got an error "
@@ -660,7 +660,7 @@ void SBThread::StepOut(SBError &error) {
   StackFrameSP frame_sp(thread->GetStackFrameAtIndex(0));
   if (frame_sp) {
     llvm::Expected<lldb::ThreadPlanSP> frame_plan_result =
-        frame_sp->GetThreadPlanForStepType(eStepTypeOut);
+        thread->GetSelectedFrameStepPlan(eStepTypeOut);
     if (auto llvm_err = frame_plan_result.takeError()) {
       error.SetErrorStringWithFormat(
           "scripted frame provider got an error "
@@ -767,7 +767,7 @@ void SBThread::StepInstruction(bool step_over, SBError &error) {
 
   if (frame_sp) {
     llvm::Expected<lldb::ThreadPlanSP> frame_plan_result =
-        frame_sp->GetThreadPlanForStepType(step_type);
+        thread->GetSelectedFrameStepPlan(step_type);
     if (auto llvm_err = frame_plan_result.takeError()) {
       error.SetErrorStringWithFormat(
           "scripted frame provider got an error "
@@ -779,7 +779,9 @@ void SBThread::StepInstruction(bool step_over, SBError &error) {
   }
 
   Status new_plan_status;
-  if (!new_plan_sp)
+  if (new_plan_sp)
+    new_plan_status = thread->QueueThreadPlan(new_plan_sp, false);
+  else
     new_plan_sp = thread->QueueThreadPlanForStepSingleInstruction(
         step_over, false, true, new_plan_status);
 
