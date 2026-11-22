@@ -15,10 +15,11 @@ using namespace lldb_private;
 
 std::vector<CompilerDecl>
 CompilerDeclContext::FindDeclByName(ConstString name,
-                                    const bool ignore_using_decls) {
+                                    const bool ignore_using_decls,
+                                    llvm::function_ref<bool()> should_stop) {
   if (IsValid())
-    return m_type_system->DeclContextFindDeclByName(m_opaque_decl_ctx, name,
-                                                    ignore_using_decls);
+    return m_type_system->DeclContextFindDeclByName(
+        m_opaque_decl_ctx, name, ignore_using_decls, should_stop);
   return std::vector<CompilerDecl>();
 }
 

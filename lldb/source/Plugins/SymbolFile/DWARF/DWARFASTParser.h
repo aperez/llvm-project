@@ -55,8 +55,11 @@ public:
   virtual CompilerDeclContext
   GetDeclContextContainingUIDFromDWARF(const DWARFDIE &die) = 0;
 
-  virtual void EnsureAllDIEsInDeclContextHaveBeenParsed(
-      CompilerDeclContext decl_context) = 0;
+  /// \return
+  ///     False if \p should_stop stopped parsing early, true otherwise.
+  virtual bool EnsureAllDIEsInDeclContextHaveBeenParsed(
+      CompilerDeclContext decl_context,
+      llvm::function_ref<bool()> should_stop) = 0;
 
   virtual std::string GetDIEClassTemplateParams(DWARFDIE die) = 0;
 

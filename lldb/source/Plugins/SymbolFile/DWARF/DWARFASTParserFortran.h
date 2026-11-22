@@ -83,8 +83,11 @@ public:
     return lldb_private::CompilerDeclContext();
   }
 
-  void EnsureAllDIEsInDeclContextHaveBeenParsed(
-      lldb_private::CompilerDeclContext decl_context) override {}
+  bool EnsureAllDIEsInDeclContextHaveBeenParsed(
+      lldb_private::CompilerDeclContext decl_context,
+      llvm::function_ref<bool()> should_stop) override {
+    return true;
+  }
 
   std::string GetDIEClassTemplateParams(
       lldb_private::plugin::dwarf::DWARFDIE die) override {

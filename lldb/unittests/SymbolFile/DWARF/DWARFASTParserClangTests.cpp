@@ -168,10 +168,347 @@ DWARF:
   for (int i = 0; i < 4; ++i)
     ast_parser.LinkDeclContextToDIE(decl_ctxs[i], dies[i]);
   ast_parser.EnsureAllDIEsInDeclContextHaveBeenParsed(
-      CompilerDeclContext(nullptr, decl_ctxs[1]));
+      CompilerDeclContext(nullptr, decl_ctxs[1]), {});
 
   EXPECT_THAT(ast_parser.GetDeclContextToDIEMapKeys(),
               testing::UnorderedElementsAre(decl_ctxs[0], decl_ctxs[3]));
+}
+
+TEST_F(DWARFASTParserClangTests,
+       EnsureAllDIEsInDeclContextHaveBeenParsedCanStopEarly) {
+  // namespace ns { int a; int b; }
+  const char *yamldata = R"(
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_EXEC
+  Machine: EM_X86_64
+DWARF:
+  debug_str:
+    - ns
+    - a
+    - b
+    - int
+  debug_abbrev:
+    - Table:
+        - Code:            0x00000001
+          Tag:             DW_TAG_compile_unit
+          Children:        DW_CHILDREN_yes
+          Attributes:
+            - Attribute:       DW_AT_language
+              Form:            DW_FORM_data2
+        - Code:            0x00000002
+          Tag:             DW_TAG_namespace
+          Children:        DW_CHILDREN_yes
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+        - Code:            0x00000003
+          Tag:             DW_TAG_variable
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_type
+              Form:            DW_FORM_ref4
+        - Code:            0x00000004
+          Tag:             DW_TAG_base_type
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_encoding
+              Form:            DW_FORM_data1
+            - Attribute:       DW_AT_byte_size
+              Form:            DW_FORM_data1
+  debug_info:
+    - Version:         4
+      AddrSize:        8
+      Entries:
+        - AbbrCode:        0x00000001
+          Values:
+            - Value:           0x0000000000000004 # DW_LANG_C_plus_plus
+        - AbbrCode:        0x00000002
+          Values:
+            - Value:           0x0000000000000000 # "ns"
+        - AbbrCode:        0x00000003
+          Values:
+            - Value:           0x0000000000000003 # "a"
+            - Value:           0x0000000000000026 # int
+        - AbbrCode:        0x00000003
+          Values:
+            - Value:           0x0000000000000005 # "b"
+            - Value:           0x0000000000000026 # int
+        - AbbrCode:        0x00000000
+        - AbbrCode:        0x00000004
+          Values:
+            - Value:           0x0000000000000007 # "int"
+            - Value:           0x0000000000000005 # DW_ATE_signed
+            - Value:           0x0000000000000004
+        - AbbrCode:        0x00000000
+)";
+  DWARFASTParserClangYAMLTester tester(yamldata);
+  DWARFASTParserClang &parser = tester.GetParser();
+
+  DWARFDIE ns_die = tester.GetCUDIE().GetFirstChild();
+  ASSERT_EQ(ns_die.Tag(), DW_TAG_namespace);
+  CompilerDeclContext ns_ctx = parser.GetDeclContextForUIDFromDWARF(ns_die);
+  auto *ns_decl = llvm::dyn_cast_or_null<clang::NamespaceDecl>(
+      static_cast<clang::DeclContext *>(ns_ctx.GetOpaqueDeclContext()));
+  ASSERT_NE(ns_decl, nullptr);
+
+  auto variable_names = [&] {
+    std::vector<std::string> names;
+    for (clang::Decl *decl : ns_decl->noload_decls())
+      if (auto *var = llvm::dyn_cast<clang::VarDecl>(decl))
+        names.push_back(var->getName().str());
+    return names;
+  };
+
+  // Stop after the first variable has been parsed.
+  int checks = 0;
+  EXPECT_FALSE(parser.EnsureAllDIEsInDeclContextHaveBeenParsed(
+      ns_ctx, [&] { return ++checks == 2; }));
+  EXPECT_THAT(variable_names(), testing::ElementsAre("a"));
+
+  // The next call parses the rest, without parsing the first one again.
+  EXPECT_TRUE(parser.EnsureAllDIEsInDeclContextHaveBeenParsed(ns_ctx, {}));
+  EXPECT_THAT(variable_names(), testing::ElementsAre("a", "b"));
+}
+
+TEST_F(DWARFASTParserClangTests, FindDeclByNameStopsWithParsing) {
+  // namespace outer { int b; namespace inner { int a; int b; } }
+  const char *yamldata = R"(
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_EXEC
+  Machine: EM_X86_64
+DWARF:
+  debug_str:
+    - outer
+    - inner
+    - a
+    - b
+    - int
+  debug_abbrev:
+    - Table:
+        - Code:            0x00000001
+          Tag:             DW_TAG_compile_unit
+          Children:        DW_CHILDREN_yes
+          Attributes:
+            - Attribute:       DW_AT_language
+              Form:            DW_FORM_data2
+        - Code:            0x00000002
+          Tag:             DW_TAG_namespace
+          Children:        DW_CHILDREN_yes
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+        - Code:            0x00000003
+          Tag:             DW_TAG_variable
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_type
+              Form:            DW_FORM_ref4
+        - Code:            0x00000004
+          Tag:             DW_TAG_base_type
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_encoding
+              Form:            DW_FORM_data1
+            - Attribute:       DW_AT_byte_size
+              Form:            DW_FORM_data1
+  debug_info:
+    - Version:         4
+      AddrSize:        8
+      Entries:
+        - AbbrCode:        0x00000001
+          Values:
+            - Value:           0x0000000000000004 # DW_LANG_C_plus_plus
+        - AbbrCode:        0x00000002
+          Values:
+            - Value:           0x0000000000000000 # "outer"
+        - AbbrCode:        0x00000003
+          Values:
+            - Value:           0x000000000000000E # "b"
+            - Value:           0x0000000000000035 # int
+        - AbbrCode:        0x00000002
+          Values:
+            - Value:           0x0000000000000006 # "inner"
+        - AbbrCode:        0x00000003
+          Values:
+            - Value:           0x000000000000000C # "a"
+            - Value:           0x0000000000000035 # int
+        - AbbrCode:        0x00000003
+          Values:
+            - Value:           0x000000000000000E # "b"
+            - Value:           0x0000000000000035 # int
+        - AbbrCode:        0x00000000
+        - AbbrCode:        0x00000000
+        - AbbrCode:        0x00000004
+          Values:
+            - Value:           0x0000000000000010 # "int"
+            - Value:           0x0000000000000005 # DW_ATE_signed
+            - Value:           0x0000000000000004
+        - AbbrCode:        0x00000000
+)";
+  DWARFASTParserClangYAMLTester tester(yamldata);
+  DWARFASTParserClang &parser = tester.GetParser();
+
+  DWARFDIE outer_die = tester.GetCUDIE().GetFirstChild();
+  DWARFDIE inner_die = outer_die.GetFirstChild().GetSibling();
+  ASSERT_EQ(inner_die.Tag(), DW_TAG_namespace);
+  CompilerDeclContext outer_ctx =
+      parser.GetDeclContextForUIDFromDWARF(outer_die);
+  CompilerDeclContext inner_ctx =
+      parser.GetDeclContextForUIDFromDWARF(inner_die);
+  parser.EnsureAllDIEsInDeclContextHaveBeenParsed(outer_ctx, {});
+
+  // Stopping before inner::b is parsed must not find outer::b instead.
+  int checks = 0;
+  EXPECT_THAT(inner_ctx.FindDeclByName(ConstString("b"), false,
+                                       [&] { return ++checks == 2; }),
+              testing::IsEmpty());
+
+  std::vector<CompilerDecl> found =
+      inner_ctx.FindDeclByName(ConstString("b"), false);
+  ASSERT_EQ(found.size(), 1u);
+  EXPECT_EQ(found[0].GetDeclContext(), inner_ctx);
+}
+
+TEST_F(DWARFASTParserClangTests, CountDeclLevelsStopsWithParsing) {
+  // namespace target { namespace sub {} }
+  // namespace outer {
+  //   using namespace target;
+  //   namespace inner { int a; using namespace target; }
+  // }
+  const char *yamldata = R"(
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_EXEC
+  Machine: EM_X86_64
+DWARF:
+  debug_str:
+    - target
+    - sub
+    - outer
+    - inner
+    - a
+    - int
+  debug_abbrev:
+    - Table:
+        - Code:            0x00000001
+          Tag:             DW_TAG_compile_unit
+          Children:        DW_CHILDREN_yes
+          Attributes:
+            - Attribute:       DW_AT_language
+              Form:            DW_FORM_data2
+        - Code:            0x00000002
+          Tag:             DW_TAG_namespace
+          Children:        DW_CHILDREN_yes
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+        - Code:            0x00000003
+          Tag:             DW_TAG_namespace
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+        - Code:            0x00000004
+          Tag:             DW_TAG_variable
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_type
+              Form:            DW_FORM_ref4
+        - Code:            0x00000005
+          Tag:             DW_TAG_imported_module
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_import
+              Form:            DW_FORM_ref4
+        - Code:            0x00000006
+          Tag:             DW_TAG_base_type
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_encoding
+              Form:            DW_FORM_data1
+            - Attribute:       DW_AT_byte_size
+              Form:            DW_FORM_data1
+  debug_info:
+    - Version:         4
+      AddrSize:        8
+      Entries:
+        - AbbrCode:        0x00000001
+          Values:
+            - Value:           0x0000000000000004 # DW_LANG_C_plus_plus
+        - AbbrCode:        0x00000002
+          Values:
+            - Value:           0x0000000000000000 # "target"
+        - AbbrCode:        0x00000003
+          Values:
+            - Value:           0x0000000000000007 # "sub"
+        - AbbrCode:        0x00000000
+        - AbbrCode:        0x00000002
+          Values:
+            - Value:           0x000000000000000B # "outer"
+        - AbbrCode:        0x00000005
+          Values:
+            - Value:           0x000000000000000E # target
+        - AbbrCode:        0x00000002
+          Values:
+            - Value:           0x0000000000000011 # "inner"
+        - AbbrCode:        0x00000004
+          Values:
+            - Value:           0x0000000000000017 # "a"
+            - Value:           0x0000000000000038 # int
+        - AbbrCode:        0x00000005
+          Values:
+            - Value:           0x000000000000000E # target
+        - AbbrCode:        0x00000000
+        - AbbrCode:        0x00000000
+        - AbbrCode:        0x00000006
+          Values:
+            - Value:           0x0000000000000019 # "int"
+            - Value:           0x0000000000000005 # DW_ATE_signed
+            - Value:           0x0000000000000004
+        - AbbrCode:        0x00000000
+)";
+  DWARFASTParserClangYAMLTester tester(yamldata);
+  DWARFASTParserClang &parser = tester.GetParser();
+
+  DWARFDIE target_die = tester.GetCUDIE().GetFirstChild();
+  DWARFDIE outer_die = target_die.GetSibling();
+  DWARFDIE inner_die = outer_die.GetFirstChild().GetSibling();
+  ASSERT_EQ(inner_die.Tag(), DW_TAG_namespace);
+  auto get_decl_ctx = [&](const DWARFDIE &die) {
+    return static_cast<clang::DeclContext *>(
+        parser.GetDeclContextForUIDFromDWARF(die).GetOpaqueDeclContext());
+  };
+  clang::DeclContext *sub_ctx = get_decl_ctx(target_die.GetFirstChild());
+  clang::DeclContext *inner_ctx = get_decl_ctx(inner_die);
+
+  // Stopping before the using directive in inner is parsed must not count the
+  // levels to the one in outer instead.
+  int checks = 0;
+  EXPECT_EQ(
+      tester.GetTypeSystem().CountDeclLevels(
+          inner_ctx, sub_ctx, nullptr, nullptr, [&] { return ++checks == 2; }),
+      LLDB_INVALID_DECL_LEVEL);
+  EXPECT_EQ(tester.GetTypeSystem().CountDeclLevels(inner_ctx, sub_ctx), 0u);
 }
 
 TEST_F(DWARFASTParserClangTests, TestCallingConventionParsing) {

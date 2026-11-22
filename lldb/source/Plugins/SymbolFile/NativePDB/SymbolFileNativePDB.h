@@ -83,8 +83,8 @@ public:
 
   // Compile Unit function calls
 
-  void
-  ParseDeclsForContext(lldb_private::CompilerDeclContext decl_ctx) override;
+  bool ParseDeclsForContext(lldb_private::CompilerDeclContext decl_ctx,
+                            llvm::function_ref<bool()> should_stop) override;
 
   lldb::LanguageType
   ParseLanguage(lldb_private::CompileUnit &comp_unit) override;

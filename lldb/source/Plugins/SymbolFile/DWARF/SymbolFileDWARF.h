@@ -158,7 +158,8 @@ public:
   std::vector<CompilerContext>
   GetCompilerContextForUID(lldb::user_id_t uid) override;
 
-  void ParseDeclsForContext(CompilerDeclContext decl_ctx) override;
+  bool ParseDeclsForContext(CompilerDeclContext decl_ctx,
+                            llvm::function_ref<bool()> should_stop) override;
 
   uint32_t ResolveSymbolContext(const Address &so_addr,
                                 lldb::SymbolContextItem resolve_scope,

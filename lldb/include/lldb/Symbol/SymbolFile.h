@@ -240,7 +240,22 @@ public:
                             const lldb_private::ExecutionContext *exe_ctx) = 0;
 
   virtual bool CompleteType(CompilerType &compiler_type) = 0;
-  virtual void ParseDeclsForContext(CompilerDeclContext decl_ctx) {}
+
+  /// Creates the declarations that \p decl_ctx contains.
+  ///
+  /// \param[in] should_stop
+  ///     If set, symbol files that can stop early call it while parsing, and
+  ///     stop when it returns true. It must not parse declarations itself.
+  ///     Declarations created before stopping are kept, and a later call
+  ///     creates the rest.
+  ///
+  /// \return
+  ///     False if \p should_stop stopped parsing early, true otherwise.
+  virtual bool ParseDeclsForContext(CompilerDeclContext decl_ctx,
+                                    llvm::function_ref<bool()> should_stop) {
+    return true;
+  }
+
   virtual CompilerDecl GetDeclForUID(lldb::user_id_t uid) { return {}; }
   virtual CompilerDeclContext GetDeclContextForUID(lldb::user_id_t uid) {
     return {};

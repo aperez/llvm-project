@@ -1240,15 +1240,17 @@ Block *SymbolFileNativePDB::GetOrCreateBlock(PdbCompilandSymId block_id) {
   return CreateBlock(block_id);
 }
 
-void SymbolFileNativePDB::ParseDeclsForContext(
-    lldb_private::CompilerDeclContext decl_ctx) {
+bool SymbolFileNativePDB::ParseDeclsForContext(
+    lldb_private::CompilerDeclContext decl_ctx,
+    llvm::function_ref<bool()> should_stop) {
   TypeSystem *ts = decl_ctx.GetTypeSystem();
   if (!ts)
-    return;
+    return true;
   PdbAstBuilder *ast_builder = ts->GetNativePDBParser();
   if (!ast_builder)
-    return;
+    return true;
   ast_builder->ParseDeclsForContext(decl_ctx);
+  return true;
 }
 
 lldb::CompUnitSP SymbolFileNativePDB::ParseCompileUnitAtIndex(uint32_t index) {

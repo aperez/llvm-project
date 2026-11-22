@@ -203,7 +203,8 @@ TypeSystem::DeclContextGetCompilerContext(void *opaque_decl_ctx) {
 
 std::vector<CompilerDecl>
 TypeSystem::DeclContextFindDeclByName(void *opaque_decl_ctx, ConstString name,
-                                      bool ignore_imported_decls) {
+                                      bool ignore_imported_decls,
+                                      llvm::function_ref<bool()> should_stop) {
   return std::vector<CompilerDecl>();
 }
 

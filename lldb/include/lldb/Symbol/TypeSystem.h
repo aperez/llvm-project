@@ -122,7 +122,8 @@ public:
 
   virtual std::vector<CompilerDecl>
   DeclContextFindDeclByName(void *opaque_decl_ctx, ConstString name,
-                            const bool ignore_imported_decls);
+                            const bool ignore_imported_decls,
+                            llvm::function_ref<bool()> should_stop);
 
   virtual ConstString DeclContextGetName(void *opaque_decl_ctx) = 0;
 

@@ -63,8 +63,12 @@ public:
   /// the subsequent entry, so the topmost entry is the global namespace.
   std::vector<lldb_private::CompilerContext> GetCompilerContext() const;
 
-  std::vector<CompilerDecl> FindDeclByName(ConstString name,
-                                           const bool ignore_using_decls);
+  /// \param[in] should_stop
+  ///     Passed to SymbolFile::ParseDeclsForContext. If it stops parsing, the
+  ///     search returns nothing, as it does when it finds nothing.
+  std::vector<CompilerDecl>
+  FindDeclByName(ConstString name, const bool ignore_using_decls,
+                 llvm::function_ref<bool()> should_stop = {});
 
   /// Checks if this decl context represents a method of a class.
   ///

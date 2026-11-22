@@ -74,8 +74,9 @@ public:
   lldb_private::CompilerDecl GetDeclForUIDFromDWARF(
       const lldb_private::plugin::dwarf::DWARFDIE &die) override;
 
-  void EnsureAllDIEsInDeclContextHaveBeenParsed(
-      lldb_private::CompilerDeclContext decl_context) override;
+  bool EnsureAllDIEsInDeclContextHaveBeenParsed(
+      lldb_private::CompilerDeclContext decl_context,
+      llvm::function_ref<bool()> should_stop) override;
 
   lldb_private::CompilerDeclContext GetDeclContextForUIDFromDWARF(
       const lldb_private::plugin::dwarf::DWARFDIE &die) override;

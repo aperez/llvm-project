@@ -1476,12 +1476,19 @@ SymbolFileDWARFDebugMap::GetCompilerContextForUID(lldb::user_id_t type_uid) {
   return {};
 }
 
-void SymbolFileDWARFDebugMap::ParseDeclsForContext(
-    lldb_private::CompilerDeclContext decl_ctx) {
+bool SymbolFileDWARFDebugMap::ParseDeclsForContext(
+    lldb_private::CompilerDeclContext decl_ctx,
+    llvm::function_ref<bool()> should_stop) {
+  bool finished = true;
   ForEachSymbolFile("Parsing declarations", [&](SymbolFileDWARF &oso_dwarf) {
-    oso_dwarf.ParseDeclsForContext(decl_ctx);
+    if ((should_stop && should_stop()) ||
+        !oso_dwarf.ParseDeclsForContext(decl_ctx, should_stop)) {
+      finished = false;
+      return IterationAction::Stop;
+    }
     return IterationAction::Continue;
   });
+  return finished;
 }
 
 bool SymbolFileDWARFDebugMap::AddOSOFileRange(CompileUnitInfo *cu_info,

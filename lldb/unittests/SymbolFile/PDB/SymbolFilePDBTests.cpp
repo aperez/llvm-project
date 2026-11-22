@@ -464,8 +464,9 @@ TEST_F(SymbolFilePDBTests, TestClassInNamespace) {
   auto tu = ast_ctx.getTranslationUnitDecl();
   EXPECT_NE(nullptr, tu);
 
-  symfile->ParseDeclsForContext(CompilerDeclContext(
-      clang_ast_ctx, static_cast<clang::DeclContext *>(tu)));
+  symfile->ParseDeclsForContext(
+      CompilerDeclContext(clang_ast_ctx, static_cast<clang::DeclContext *>(tu)),
+      {});
 
   auto ns_namespace_decl_ctx =
       symfile->FindNamespace(ConstString("NS"), CompilerDeclContext(), true);

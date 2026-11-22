@@ -587,7 +587,8 @@ public:
 
   std::vector<CompilerDecl>
   DeclContextFindDeclByName(void *opaque_decl_ctx, ConstString name,
-                            const bool ignore_using_decls) override;
+                            const bool ignore_using_decls,
+                            llvm::function_ref<bool()> should_stop) override;
 
   ConstString DeclContextGetName(void *opaque_decl_ctx) override;
 
@@ -964,11 +965,12 @@ public:
 
 #define LLDB_INVALID_DECL_LEVEL UINT32_MAX
   // LLDB_INVALID_DECL_LEVEL is returned by CountDeclLevels if child_decl_ctx
-  // could not be found in decl_ctx.
+  // could not be found from frame_decl_ctx, or if should_stop stopped parsing.
   uint32_t CountDeclLevels(clang::DeclContext *frame_decl_ctx,
                            clang::DeclContext *child_decl_ctx,
                            ConstString *child_name = nullptr,
-                           CompilerType *child_type = nullptr);
+                           CompilerType *child_type = nullptr,
+                           llvm::function_ref<bool()> should_stop = {});
 
   // Modifying RecordType
   static clang::FieldDecl *AddFieldToRecordType(const CompilerType &type,

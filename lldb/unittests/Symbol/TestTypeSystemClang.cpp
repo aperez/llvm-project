@@ -1265,8 +1265,8 @@ TEST(TestScratchTypeSystemClang, InferSubASTFromLangOpts) {
 
 TEST_F(TestTypeSystemClang, GetDeclContextByNameWhenMissingSymbolFile) {
   // Test that a type system without a symbol file is handled gracefully.
-  std::vector<CompilerDecl> decls =
-      m_ast->DeclContextFindDeclByName(nullptr, ConstString("SomeName"), true);
+  std::vector<CompilerDecl> decls = m_ast->DeclContextFindDeclByName(
+      nullptr, ConstString("SomeName"), true, {});
 
   EXPECT_TRUE(decls.empty());
 }

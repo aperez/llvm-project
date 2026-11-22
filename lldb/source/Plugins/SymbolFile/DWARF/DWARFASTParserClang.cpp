@@ -2348,15 +2348,22 @@ bool DWARFASTParserClang::CompleteTypeFromDWARF(
   return true;
 }
 
-void DWARFASTParserClang::EnsureAllDIEsInDeclContextHaveBeenParsed(
-    lldb_private::CompilerDeclContext decl_context) {
+bool DWARFASTParserClang::EnsureAllDIEsInDeclContextHaveBeenParsed(
+    lldb_private::CompilerDeclContext decl_context,
+    llvm::function_ref<bool()> should_stop) {
   auto opaque_decl_ctx =
       (clang::DeclContext *)decl_context.GetOpaqueDeclContext();
   for (auto it = m_decl_ctx_to_die.find(opaque_decl_ctx);
        it != m_decl_ctx_to_die.end() && it->first == opaque_decl_ctx;
-       it = m_decl_ctx_to_die.erase(it))
-    for (DWARFDIE decl : it->second.children())
+       it = m_decl_ctx_to_die.erase(it)) {
+    for (DWARFDIE decl : it->second.children()) {
+      // Returning keeps this entry, so that a later call finishes it.
+      if (should_stop && should_stop())
+        return false;
       GetClangDeclForDIE(decl);
+    }
+  }
+  return true;
 }
 
 CompilerDecl DWARFASTParserClang::GetDeclForUIDFromDWARF(const DWARFDIE &die) {

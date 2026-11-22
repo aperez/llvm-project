@@ -1672,11 +1672,13 @@ bool SymbolFileDWARF::ClassOrStructIsVirtual(const DWARFDIE &parent_die) {
   return false;
 }
 
-void SymbolFileDWARF::ParseDeclsForContext(CompilerDeclContext decl_ctx) {
+bool SymbolFileDWARF::ParseDeclsForContext(
+    CompilerDeclContext decl_ctx, llvm::function_ref<bool()> should_stop) {
   auto *type_system = decl_ctx.GetTypeSystem();
-  if (type_system != nullptr)
-    type_system->GetDWARFParser()->EnsureAllDIEsInDeclContextHaveBeenParsed(
-        decl_ctx);
+  if (type_system == nullptr)
+    return true;
+  return type_system->GetDWARFParser()
+      ->EnsureAllDIEsInDeclContextHaveBeenParsed(decl_ctx, should_stop);
 }
 
 DWARFDIE

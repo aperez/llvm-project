@@ -9356,7 +9356,8 @@ Scalar TypeSystemClang::DeclGetConstantValue(void *opaque_decl) {
 // CompilerDeclContext functions
 
 std::vector<CompilerDecl> TypeSystemClang::DeclContextFindDeclByName(
-    void *opaque_decl_ctx, ConstString name, const bool ignore_using_decls) {
+    void *opaque_decl_ctx, ConstString name, const bool ignore_using_decls,
+    llvm::function_ref<bool()> should_stop) {
   std::vector<CompilerDecl> found_decls;
   SymbolFile *symbol_file = GetSymbolFile();
   if (opaque_decl_ctx && symbol_file) {
@@ -9373,8 +9374,9 @@ std::vector<CompilerDecl> TypeSystemClang::DeclContextFindDeclByName(
            it++) {
         if (!searched.insert(it->second).second)
           continue;
-        symbol_file->ParseDeclsForContext(
-            CreateDeclContext(it->second));
+        if (!symbol_file->ParseDeclsForContext(CreateDeclContext(it->second),
+                                               should_stop))
+          return {};
 
         for (clang::Decl *child : it->second->decls()) {
           if (clang::UsingDirectiveDecl *ud =
@@ -9451,10 +9453,10 @@ std::vector<CompilerDecl> TypeSystemClang::DeclContextFindDeclByName(
 // below the global scope.  More work needs to be done to recognise that, if
 // the decl we're trying to look up is static, we should compare its source
 // file with that of the current scope and return a lower number for it.
-uint32_t TypeSystemClang::CountDeclLevels(clang::DeclContext *frame_decl_ctx,
-                                          clang::DeclContext *child_decl_ctx,
-                                          ConstString *child_name,
-                                          CompilerType *child_type) {
+uint32_t TypeSystemClang::CountDeclLevels(
+    clang::DeclContext *frame_decl_ctx, clang::DeclContext *child_decl_ctx,
+    ConstString *child_name, CompilerType *child_type,
+    llvm::function_ref<bool()> should_stop) {
   SymbolFile *symbol_file = GetSymbolFile();
   if (frame_decl_ctx && symbol_file) {
     std::set<DeclContext *> searched;
@@ -9487,8 +9489,9 @@ uint32_t TypeSystemClang::CountDeclLevels(clang::DeclContext *frame_decl_ctx,
           continue;
 
         searched.insert(it->second);
-        symbol_file->ParseDeclsForContext(
-            CreateDeclContext(it->second));
+        if (!symbol_file->ParseDeclsForContext(CreateDeclContext(it->second),
+                                               should_stop))
+          return LLDB_INVALID_DECL_LEVEL;
 
         for (clang::Decl *child : it->second->decls()) {
           if (clang::UsingDirectiveDecl *ud =

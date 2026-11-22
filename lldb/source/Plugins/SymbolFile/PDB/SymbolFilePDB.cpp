@@ -794,28 +794,30 @@ SymbolFilePDB::GetDeclContextContainingUID(lldb::user_id_t uid) {
   return clang_ast_ctx->CreateDeclContext(decl_context);
 }
 
-void SymbolFilePDB::ParseDeclsForContext(
-    lldb_private::CompilerDeclContext decl_ctx) {
+bool SymbolFilePDB::ParseDeclsForContext(
+    lldb_private::CompilerDeclContext decl_ctx,
+    llvm::function_ref<bool()> should_stop) {
   auto type_system_or_err =
       GetTypeSystemForLanguage(lldb::eLanguageTypeC_plus_plus);
   if (auto err = type_system_or_err.takeError()) {
     LLDB_LOG_ERROR(GetLog(LLDBLog::Symbols), std::move(err),
                    "Unable to parse decls for context: {0}");
-    return;
+    return true;
   }
 
   auto ts = *type_system_or_err;
   TypeSystemClang *clang_ast_ctx =
       llvm::dyn_cast_or_null<TypeSystemClang>(ts.get());
   if (!clang_ast_ctx)
-    return;
+    return true;
 
   PDBASTParser *pdb = clang_ast_ctx->GetPDBParser();
   if (!pdb)
-    return;
+    return true;
 
   pdb->ParseDeclsForDeclContext(
       static_cast<clang::DeclContext *>(decl_ctx.GetOpaqueDeclContext()));
+  return true;
 }
 
 uint32_t

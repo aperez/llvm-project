@@ -254,13 +254,14 @@ SymbolFileOnDemand::GetDeclContextContainingUID(lldb::user_id_t type_uid) {
   return m_sym_file_impl->GetDeclContextContainingUID(type_uid);
 }
 
-void SymbolFileOnDemand::ParseDeclsForContext(CompilerDeclContext decl_ctx) {
+bool SymbolFileOnDemand::ParseDeclsForContext(
+    CompilerDeclContext decl_ctx, llvm::function_ref<bool()> should_stop) {
   if (!m_debug_info_enabled) {
     LLDB_LOG(GetLog(), "[{0}] {1} is skipped", GetSymbolFileName(),
              __FUNCTION__);
-    return;
+    return true;
   }
-  return m_sym_file_impl->ParseDeclsForContext(decl_ctx);
+  return m_sym_file_impl->ParseDeclsForContext(decl_ctx, should_stop);
 }
 
 uint32_t
