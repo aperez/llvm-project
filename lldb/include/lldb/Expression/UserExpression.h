@@ -276,6 +276,10 @@ public:
     return m_fixed_text;
   }
 
+  /// Whether the last call to Parse() failed because the target's debugger
+  /// was interrupted.
+  bool ParseWasInterrupted() const { return m_parse_interrupted; }
+
 protected:
   virtual lldb::ExpressionResults
   DoExecute(DiagnosticManager &diagnostic_manager, ExecutionContext &exe_ctx,
@@ -332,6 +336,7 @@ protected:
   /// The text of the expression with fix-its applied this won't be set if the
   /// fixed text doesn't parse.
   std::string m_fixed_text;
+  bool m_parse_interrupted = false;
   /// The language to use when parsing (unknown means use defaults).
   SourceLanguage m_language;
   /// The type to coerce the expression's result to. If eResultTypeAny, inferred

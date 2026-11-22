@@ -112,6 +112,15 @@ public:
 
   void InstallDiagnosticManager(DiagnosticManager &diag_manager);
 
+  /// Lets \p debugger's interrupts stop this decl map's declaration lookups,
+  /// or stops checking for interrupts if \p debugger is null. Once an
+  /// interrupt has stopped a lookup, every later lookup finds nothing.
+  void SetInterruptibleBy(Debugger *debugger) {
+    m_interrupting_debugger = debugger;
+  }
+
+  bool LookupsWereInterrupted() const override { return m_lookups_interrupted; }
+
   /// Disable the state needed for parsing and IR transformation.
   void DidParse();
 
@@ -319,6 +328,11 @@ private:
   /// non-const C++ method when stopped in a const-method (which would be
   /// disallowed by C++ language rules).
   bool m_ignore_context_qualifiers = false;
+
+  Debugger *m_interrupting_debugger = nullptr;
+  bool m_lookups_interrupted = false;
+
+  bool ShouldStopLookups();
 
   /// The following values should not live beyond parsing
   class ParserVars {

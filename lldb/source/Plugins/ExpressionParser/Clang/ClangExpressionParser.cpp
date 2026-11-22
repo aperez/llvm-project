@@ -1395,6 +1395,15 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
         m_pp_callbacks->getErrorString());
   }
 
+  // A lookup that stopped early can bind a name to the wrong declaration, so
+  // the parse must fail even if Clang accepted it.
+  if (decl_map && decl_map->LookupsWereInterrupted()) {
+    diagnostic_manager.Clear();
+    diagnostic_manager.PutString(lldb::eSeverityError,
+                                 "Interrupted while parsing expression");
+    num_errors++;
+  }
+
   if (!num_errors) {
     type_system_helper->CommitPersistentDecls();
   }

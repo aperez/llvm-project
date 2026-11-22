@@ -18,6 +18,7 @@
 #include "NameSearchContext.h"
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Core/Address.h"
+#include "lldb/Core/Debugger.h"
 #include "lldb/Core/Mangled.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/ModuleSpec.h"
@@ -667,9 +668,18 @@ TypeSystemClang *ClangExpressionDeclMap::GetTypeSystemClang() {
 
 // Interface for ClangASTSource
 
+bool ClangExpressionDeclMap::ShouldStopLookups() {
+  if (!m_lookups_interrupted && m_interrupting_debugger)
+    m_lookups_interrupted = m_interrupting_debugger->InterruptRequested();
+  return m_lookups_interrupted;
+}
+
 void ClangExpressionDeclMap::FindExternalVisibleDecls(
     NameSearchContext &context) {
   assert(m_ast_context);
+
+  if (m_lookups_interrupted)
+    return;
 
   const auto name = context.m_decl_name.getAsString();
 
@@ -715,6 +725,8 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
         namespace_map.get(), namespace_map->size());
 
     for (ClangASTImporter::NamespaceMapItem &n : *namespace_map) {
+      if (m_lookups_interrupted)
+        break;
       LLDB_LOG(log, "  CEDM::FEVD Searching namespace {0} in module {1}",
                n.second.GetName(), n.first->GetFileSpec().GetFilename());
 
@@ -727,6 +739,9 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
 
     FindExternalVisibleDecls(context, lldb::ModuleSP(), namespace_decl);
   }
+
+  if (m_lookups_interrupted)
+    return;
 
   ClangASTSource::FindExternalVisibleDecls(context);
 }
@@ -1102,8 +1117,13 @@ bool ClangExpressionDeclMap::LookupLocalVariable(
   // Search for declarations matching the name. Do not include imported
   // decls in the search if we are looking for decls in the artificial
   // namespace $__lldb_local_vars.
-  std::vector<CompilerDecl> found_decls =
-      decl_context.FindDeclByName(name, namespace_decl.IsValid());
+  auto should_stop = [this] { return ShouldStopLookups(); };
+  std::vector<CompilerDecl> found_decls = decl_context.FindDeclByName(
+      name, namespace_decl.IsValid(),
+      m_interrupting_debugger ? llvm::function_ref<bool()>(should_stop)
+                              : nullptr);
+  if (m_lookups_interrupted)
+    return false;
 
   VariableSP var;
   bool variable_found = false;
@@ -1211,8 +1231,13 @@ SymbolContextList ClangExpressionDeclMap::SearchFunctionsInSymbolContexts(
       // will be closer to us in the lookup scope and shadows the other.
       clang::DeclContext *func_decl_ctx =
           (clang::DeclContext *)func_decl_context.GetOpaqueDeclContext();
-      fdi.m_decl_lvl = ast->CountDeclLevels(frame_decl_ctx, func_decl_ctx,
-                                            &fdi.m_name, &fdi.m_copied_type);
+      auto should_stop = [this] { return ShouldStopLookups(); };
+      fdi.m_decl_lvl = ast->CountDeclLevels(
+          frame_decl_ctx, func_decl_ctx, &fdi.m_name, &fdi.m_copied_type,
+          m_interrupting_debugger ? llvm::function_ref<bool()>(should_stop)
+                                  : nullptr);
+      if (m_lookups_interrupted)
+        return {};
     }
     decl_infos.emplace_back(fdi);
   }
@@ -1305,6 +1330,8 @@ bool ClangExpressionDeclMap::LookupFunction(
     // We can't do this without a compiler decl context for our frame.
     if (frame_decl_context) {
       sc_list = SearchFunctionsInSymbolContexts(sc_list, frame_decl_context);
+      if (m_lookups_interrupted)
+        return false;
     }
   }
 
@@ -1449,9 +1476,12 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
 
   bool local_var_lookup = !namespace_decl || (namespace_decl.GetName() ==
                                               g_lldb_local_vars_namespace_cstr);
-  if (frame && local_var_lookup)
+  if (frame && local_var_lookup) {
     if (LookupLocalVariable(context, name, sym_ctx, namespace_decl))
       return;
+    if (m_lookups_interrupted)
+      return;
+  }
 
   if (target) {
     ValueObjectSP valobj;
@@ -1466,7 +1496,11 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
     }
   }
 
-  if (!LookupFunction(context, module_sp, name, namespace_decl))
+  bool found_function =
+      LookupFunction(context, module_sp, name, namespace_decl);
+  if (m_lookups_interrupted)
+    return;
+  if (!found_function)
     LookupInModulesDeclVendor(context, name);
 
   if (target && !context.m_found_variable && !namespace_decl) {

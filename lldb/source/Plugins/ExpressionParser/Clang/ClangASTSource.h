@@ -198,6 +198,10 @@ public:
   ///     The NameSearchContext to use when filing results.
   virtual void FindExternalVisibleDecls(NameSearchContext &context);
 
+  /// Whether an interrupt cut a lookup short, in which case Clang gets no
+  /// declarations for the name being looked up.
+  virtual bool LookupsWereInterrupted() const { return false; }
+
   clang::Sema *getSema();
 
   void SetLookupsEnabled(bool lookups_enabled) {

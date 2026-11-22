@@ -574,6 +574,9 @@ bool ClangUserExpression::TryParse(
     return false;
   }
 
+  if (Target *target = exe_ctx.GetTargetPtr())
+    DeclMap()->SetInterruptibleBy(&target->GetDebugger());
+
   if (m_options.GetExecutionPolicy() == eExecutionPolicyTopLevel) {
     DeclMap()->SetLookupsEnabled(true);
   }
@@ -583,6 +586,8 @@ bool ClangUserExpression::TryParse(
       diagnostic_manager, m_include_directories, m_filename);
 
   unsigned num_errors = m_parser->Parse(diagnostic_manager);
+  m_parse_interrupted = DeclMap()->LookupsWereInterrupted();
+  DeclMap()->SetInterruptibleBy(nullptr);
 
   // Check here for FixItHints.  If there are any try to apply the fixits and
   // set the fixed text in m_fixed_text before returning an error.
@@ -655,6 +660,7 @@ bool ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager,
                                 bool keep_result_in_memory,
                                 bool generate_debug_info) {
   Log *log = GetLog(LLDBLog::Expressions);
+  m_parse_interrupted = false;
 
   if (!PrepareForParsing(diagnostic_manager, exe_ctx, /*for_completion*/ false))
     return false;
@@ -680,7 +686,8 @@ bool ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager,
                                 keep_result_in_memory, generate_debug_info);
   // If the expression failed to parse, check if retrying parsing with a loaded
   // C++ module is possible.
-  if (!parse_success && shouldRetryWithCppModule(*target, execution_policy)) {
+  if (!parse_success && !m_parse_interrupted &&
+      shouldRetryWithCppModule(*target, execution_policy)) {
     // Load the loaded C++ modules.
     SetupCppModuleImports(exe_ctx);
     // If we did load any modules, then retry parsing.

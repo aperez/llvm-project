@@ -177,6 +177,8 @@ bool ClangASTSource::FindExternalVisibleDeclsByName(
   NameSearchContext name_search_context(*m_clang_ast_context, name_decls,
                                         clang_decl_name, decl_ctx);
   FindExternalVisibleDecls(name_search_context);
+  if (LookupsWereInterrupted())
+    name_decls.clear();
   SetExternalVisibleDeclsForName(decl_ctx, clang_decl_name, name_decls);
   m_active_lookups.erase(uniqued_const_decl_name);
   return (name_decls.size() != 0);

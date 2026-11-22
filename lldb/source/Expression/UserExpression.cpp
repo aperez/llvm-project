@@ -13,6 +13,7 @@
 #include <map>
 #include <string>
 
+#include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Progress.h"
 #include "lldb/Expression/DiagnosticManager.h"
@@ -287,6 +288,8 @@ UserExpression::Evaluate(ExecutionContext &exe_ctx,
   bool parse_success =
       user_expression_sp->Parse(diagnostic_manager, exe_ctx, execution_policy,
                                 keep_expression_in_memory, generate_debug_info);
+  bool parse_interrupted = user_expression_sp->ParseWasInterrupted();
+  parse_success &= !parse_interrupted;
 
   // Calculate the fixed expression always, since we need it for errors.
   std::string tmp_fixed_expression;
@@ -297,7 +300,7 @@ UserExpression::Evaluate(ExecutionContext &exe_ctx,
   lldb::ExpressionResults execution_results = lldb::eExpressionSetupError;
 
   // If there is a fixed expression, try to parse it:
-  if (!parse_success) {
+  if (!parse_success && !parse_interrupted) {
     execution_results = lldb::eExpressionParseError;
     if (!fixed_expression->empty() && options.GetAutoApplyFixIts()) {
       const uint64_t max_fix_retries = options.GetRetriesWithFixIts();
@@ -313,6 +316,11 @@ UserExpression::Evaluate(ExecutionContext &exe_ctx,
         parse_success = user_expression_sp->Parse(
             fixed_diagnostic_manager, exe_ctx, execution_policy,
             keep_expression_in_memory, generate_debug_info);
+        parse_interrupted = user_expression_sp->ParseWasInterrupted();
+        if (parse_interrupted) {
+          parse_success = false;
+          break;
+        }
         if (parse_success) {
           diagnostic_manager.Clear();
           break;
@@ -330,7 +338,7 @@ UserExpression::Evaluate(ExecutionContext &exe_ctx,
       }
     }
 
-    if (!parse_success) {
+    if (!parse_success && !parse_interrupted) {
       if (user_expression_sp)
         user_expression_sp->FixupParseErrorDiagnostics(diagnostic_manager);
 
@@ -349,6 +357,15 @@ UserExpression::Evaluate(ExecutionContext &exe_ctx,
         error =
             Status::FromError(diagnostic_manager.GetAsError(execution_results));
     }
+  }
+
+  if (parse_interrupted) {
+    target->GetDebugger().ReportInterruption(Debugger::InterruptionReport(
+        __func__, "Interrupted while parsing expression"));
+    execution_results = lldb::eExpressionInterrupted;
+    fixed_expression->clear();
+    error = Status::FromError(llvm::make_error<ExpressionError>(
+        execution_results, "Interrupted while parsing expression"));
   }
 
   if (parse_success) {
